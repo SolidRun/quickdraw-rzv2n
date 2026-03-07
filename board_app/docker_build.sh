@@ -8,18 +8,20 @@
 #   3. Copies compiled binaries back to the host
 #
 # Prerequisites:
-#   - Docker container 'drp-ai_tvm_v2n_container_ahmad' must be running
+#   - Docker container must be running (see --container flag)
 #   - SDK + TVM_ROOT must be available inside the container
 #
 # Usage:
-#   ./docker_build.sh              # Build everything
-#   ./docker_build.sh --clean      # Clean build/ first, then build
+#   ./docker_build.sh                                  # Build everything
+#   ./docker_build.sh --clean                          # Clean build/ first
+#   ./docker_build.sh --container my_container_name    # Use a different container
+#   QUICKDRAW_CONTAINER=my_container ./docker_build.sh # Alternative: env var
 # ═══════════════════════════════════════════════════════════════════════
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONTAINER="drp-ai_tvm_v2n_container_ahmad"
+CONTAINER="${QUICKDRAW_CONTAINER:-}"
 CONTAINER_WORK="/tmp/board_app"
 HOST_UID=$(id -u)
 HOST_GID=$(id -g)
@@ -31,9 +33,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 CLEAN=0
-for arg in "$@"; do
-    case "$arg" in
-        --clean|-c) CLEAN=1 ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --clean|-c) CLEAN=1; shift ;;
+        --container) CONTAINER="$2"; shift 2 ;;
+        *) shift ;;
     esac
 done
 
@@ -42,11 +46,80 @@ echo -e "${CYAN}  Quick Draw — Docker Build${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════${NC}"
 echo ""
 
-# ── Check container is running ──
-if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -q true; then
-    echo -e "${RED}ERROR: Container '$CONTAINER' is not running.${NC}"
-    echo "  Start it with: docker start $CONTAINER"
-    exit 1
+# ── Find and prepare container ──
+find_container() {
+    # Search patterns: DRP-AI TVM containers (broadest to narrowest)
+    local patterns=("drp-ai_tvm_v2n" "drp-ai_tvm" "drp.ai" "tvm.*v2n")
+
+    # 1. Try running containers first
+    for pat in "${patterns[@]}"; do
+        local match
+        match=$(docker ps --format '{{.Names}}' | grep -m1 -iE "$pat" 2>/dev/null || true)
+        if [ -n "$match" ]; then
+            CONTAINER="$match"
+            echo -e "  ${GREEN}Found running${NC} container: $CONTAINER"
+            return 0
+        fi
+    done
+
+    # 2. Try stopped containers — offer to start
+    for pat in "${patterns[@]}"; do
+        local match
+        match=$(docker ps -a --format '{{.Names}}' | grep -m1 -iE "$pat" 2>/dev/null || true)
+        if [ -n "$match" ]; then
+            echo -e "  ${YELLOW}Found stopped${NC} container: $match"
+            echo -ne "  Start it? [Y/n] "
+            read -r ans </dev/tty
+            if [[ "$ans" != "n" && "$ans" != "N" ]]; then
+                docker start "$match" > /dev/null
+                echo -e "  ${GREEN}Started${NC} $match"
+                CONTAINER="$match"
+                return 0
+            fi
+        fi
+    done
+
+    # 3. Nothing found
+    echo -e "${RED}ERROR: No DRP-AI TVM container found.${NC}"
+    echo ""
+    local all_containers
+    all_containers=$(docker ps -a --format '  {{.Names}}  ({{.Status}})' 2>/dev/null)
+    if [ -n "$all_containers" ]; then
+        echo "  All containers on this machine:"
+        echo "$all_containers"
+    else
+        echo "  No Docker containers exist on this machine."
+    fi
+    echo ""
+    echo "  Specify one with:"
+    echo "    ./docker_build.sh --container <name>"
+    echo "    QUICKDRAW_CONTAINER=<name> ./docker_build.sh"
+    return 1
+}
+
+if [ -z "$CONTAINER" ]; then
+    find_container || exit 1
+else
+    # User specified a container — check it exists
+    if ! docker inspect "$CONTAINER" &>/dev/null; then
+        echo -e "${RED}ERROR: Container '$CONTAINER' does not exist.${NC}"
+        echo ""
+        echo "  Similar containers:"
+        docker ps -a --format '  {{.Names}}  ({{.Status}})' | grep -i "${CONTAINER:0:8}" || echo "    (none found)"
+        exit 1
+    fi
+    # Auto-start if stopped
+    if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -q true; then
+        echo -e "  ${YELLOW}Container '$CONTAINER' is stopped.${NC}"
+        echo -ne "  Start it? [Y/n] "
+        read -r ans </dev/tty
+        if [[ "$ans" != "n" && "$ans" != "N" ]]; then
+            docker start "$CONTAINER" > /dev/null
+            echo -e "  ${GREEN}Started${NC} $CONTAINER"
+        else
+            exit 1
+        fi
+    fi
 fi
 echo -e "  ${GREEN}OK${NC} Container: $CONTAINER"
 
