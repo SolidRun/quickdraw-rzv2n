@@ -1,0 +1,128 @@
+{
+    "model": {
+        "labels": "labels.txt",
+        "size": 128,
+        "socket": "/tmp/quickdraw.sock",
+        "smooth_window": 3,
+        "confidence_threshold": 0.15
+    },
+
+    "ui": {
+        "window_width": 1280,
+        "window_height": 800,
+        "font_scale": 1.2,
+        "brush_radius": 8,
+        "canvas_ratio": 0.85,
+        "canvas_padding": 6,
+        "title_height": 60,
+        "button_height": 30,
+        "auto_predict_delay_ms": 500,
+        "live_predict_interval_ms": 800,
+        "max_history": 8,
+        "fps": 30,
+        "title": "QUICK DRAW",
+        "subtitle": "PC Mode (ONNX)",
+        "badge": "MobileNetV2"
+    },
+
+    "colors": {
+        "background":    [46, 30, 30],
+        "title_bg":      [78, 45, 45],
+        "text":          [230, 220, 220],
+        "text_dim":      [160, 140, 140],
+        "accent":        [60, 200, 220],
+        "green":         [100, 220, 100],
+        "red":           [230, 80, 80],
+        "yellow":        [240, 220, 60],
+        "bar_bg":        [70, 50, 50],
+        "bar_fg":        [60, 140, 180],
+        "panel_line":    [120, 100, 100],
+        "btn_clear":     [90, 60, 60],
+        "btn_undo":      [90, 60, 60],
+        "btn_predict":   [40, 80, 120],
+        "btn_yes":       [60, 120, 60],
+        "btn_no":        [140, 60, 60],
+        "comment_bg":    [60, 45, 50],
+        "comment_text":  [200, 180, 220]
+    },
+
+    "comments": {
+        "enabled": true,
+        "confident_threshold": 0.8,
+        "uncertain_threshold": 0.3,
+        "no_repeat_buffer": 8,
+        "min_display_secs": 2.5,
+
+        "confident": [
+            "That {class} is crystal clear. {prob}% sure.",
+            "A {class}! Too easy. Next challenge please!",
+            "Yep, definitely a {class}. No question about it.",
+            "Nailed it. Obviously a {class}. You draw well!",
+            "That is a textbook {class}. Well done!",
+            "{prob}% confident. That is basically a fact.",
+            "Beautiful {class}! You have been practicing."
+        ],
+        "uncertain": [
+            "Hmm... a {class}? Maybe. {prob}% is not great.",
+            "Is that supposed to be a {class}? Keep going...",
+            "A {class}... I think? Add more details!",
+            "Keep drawing! It might become clearer.",
+            "Half my neurons say {class}, the other half gave up."
+        ],
+        "confused": [
+            "What in the world is that? A {class}??",
+            "I have literally no idea. Random guess: {class}.",
+            "My neurons are crying right now.",
+            "Error 404: Art not found.",
+            "I have 345 categories and none of them fit."
+        ],
+        "close_call": [
+            "Is that a {class} or a {prev}? They look so similar!",
+            "Tough one! Could be {class} or {prev}. Going with {class}.",
+            "{class} by a hair over {prev}!",
+            "My brain says {class}, my gut says {prev}."
+        ],
+        "improving": [
+            "Now THAT looks more like a {class}! Keep going!",
+            "Getting clearer! {prob}% and climbing.",
+            "Oh wait, NOW I see the {class}! Those details helped.",
+            "Yes! More strokes like that. Definitely a {class}."
+        ],
+        "changing": [
+            "Wait, I thought it was a {prev}... but now I see {class}!",
+            "Plot twist! That is not a {prev} at all, it is a {class}!",
+            "Hold on... {prev}? No no no. That is a {class}.",
+            "One stroke changed everything. {prev} just became {class}."
+        ],
+        "long_journey": [
+            "What a ride! I saw {journey}... but it is a {class}!",
+            "My brain went: {trail}. What a journey.",
+            "After {num_guesses} guesses I finally see it. {class}!",
+            "I thought it was {first_guess} at first! Now I see {class}.",
+            "From {first_guess} to {class}. Your drawing evolved!"
+        ],
+        "first_stroke": [
+            "I see... something. A {class}? Let me watch.",
+            "First strokes... looks like a {class} maybe?",
+            "Hmm, could be a {class}. Keep drawing!",
+            "Just started and I already see a {class}? Interesting.",
+            "The canvas speaks! I hear... {class}?"
+        ],
+        "streak": [
+            "You are on fire! {streak} correct in a row!",
+            "Winning streak: {streak}! Keep it going!",
+            "{streak} in a row! We make a great team."
+        ],
+        "wrong_feedback": [
+            "Wait, that was NOT a {class}? My bad!",
+            "Oops! Sorry about that. I will try harder.",
+            "In my defense, it LOOKED like a {class}.",
+            "I was so sure it was a {class}... my training data lied to me."
+        ],
+        "repeat_class": [
+            "Another {class}? You really like drawing those! That is {count} times now.",
+            "{class} AGAIN? Try something new! You have drawn it {count} times.",
+            "I know a {class} when I see one. This is number {count}."
+        ]
+    }
+}
