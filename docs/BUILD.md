@@ -2,29 +2,9 @@
 
 ## Prerequisites
 
-### PC (training)
+See [INSTALL.md](INSTALL.md) for full setup instructions (Docker image build, Renesas toolchain, board setup).
 
-Python 3.8+, PyTorch 2.0+, torchvision, onnx, onnxruntime, onnx-simplifier, opencv-python, numpy, scipy.
-
-```bash
-pip install torch torchvision onnx onnxruntime onnx-simplifier opencv-python numpy scipy
-```
-
-### Docker container
-
-Container name: `drp-ai_tvm_v2n_container_ahmad`
-
-| Component | Path |
-|-----------|------|
-| DRP-AI TVM | `/drp-ai_tvm/` |
-| RZ/V LP SDK 5.0.6 | `/opt/rz-vlp/5.0.6/` |
-| DRP-AI Translator + Quantizer | `/opt/DRP-AI_Translator_i8/` |
-
-### Board
-
-- Yocto Linux
-- Root access (DRP-AI requires `/dev/drpai0`)
-- Wayland compositor (weston)
+**Summary:** You need a running DRP-AI TVM Docker container with the RZ/V LP SDK, DRP-AI Translator, and MERA2 compiler installed.
 
 ---
 

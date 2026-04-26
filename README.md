@@ -34,6 +34,7 @@ cd /home/root/quickdraw && ./run.sh
 
 | Document | Contents |
 |----------|----------|
+| [docs/INSTALL.md](docs/INSTALL.md) | System setup: Docker image, Renesas toolchain, board prerequisites |
 | [docs/TRAINING.md](docs/TRAINING.md) | Dataset download, model training, ONNX export |
 | [docs/BUILD.md](docs/BUILD.md) | DRP-AI compilation, C++ build, packaging, deployment |
 | [docs/APP.md](docs/APP.md) | Application architecture, configuration, controls |
@@ -68,6 +69,7 @@ quickdraw/
 |   +-- deploy/                  Ready-to-copy package (46 MB)
 |
 +-- docs/
+    +-- INSTALL.md
     +-- TRAINING.md
     +-- BUILD.md
     +-- APP.md
