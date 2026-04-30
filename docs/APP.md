@@ -158,7 +158,7 @@ Enabled by default (`"enabled": true`).
 | `no_repeat_buffer` | 8 | Prevent same comment within last 8 picks |
 | `min_display_secs` | 0.5 | Minimum time before comment changes |
 
-Comment categories and their triggers:
+Comment categories and their triggers (13 pools total in `config.json`):
 
 | Pool | Trigger |
 |------|---------|
@@ -171,22 +171,28 @@ Comment categories and their triggers:
 | `long_journey` | Many guesses before confident result |
 | `first_stroke` | Very first stroke on empty canvas |
 | `streak` | Ongoing correct streak |
+| `milestone_5` | 5 correct in a row |
+| `milestone_10` | 10 correct in a row |
 | `wrong_feedback` | User presses NO |
+| `repeat_class` | Same class predicted again recently |
 
-Templates use variables: `{class}`, `{prob}`, `{prev}`, `{num_guesses}`, `{first_guess}`, `{streak}`.
+Templates use variables: `{class}`, `{prob}`, `{prev}`, `{num_guesses}`, `{first_guess}`, `{streak}`, `{trail}`, `{journey}`, `{count}`.
 
 ---
 
 ## Controls
+
+From `src/gui.cpp` keypress handler:
 
 | Action | Touch | Keyboard |
 |--------|-------|----------|
 | Draw | Drag on canvas | Mouse drag |
 | Clear canvas | CLEAR button | `c` |
 | Undo last stroke | UNDO button | `z` |
+| Predict (manual) | -- | `Enter` / `Space` |
 | Mark correct | YES button | `y` |
 | Mark wrong | NO button | `n` |
-| Exit | EXIT button | `Esc` |
+| Exit | EXIT button | `Esc` / `q` |
 | Stop from terminal | -- | `Ctrl+C` |
 
 ---
