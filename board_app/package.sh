@@ -183,8 +183,9 @@ fi
 if [ -d "$HOST_LIB_DIR" ] && [ -n "$(ls -A "$HOST_LIB_DIR"/*.so* 2>/dev/null)" ]; then
     mkdir -p "$DEPLOY_DIR/lib"
     cp "$HOST_LIB_DIR"/*.so* "$DEPLOY_DIR/lib/" 2>/dev/null || true
+    cp "$HOST_LIB_DIR"/*.bin "$DEPLOY_DIR/lib/" 2>/dev/null || true
     LIB_COUNT=$(ls -1 "$DEPLOY_DIR/lib/" 2>/dev/null | wc -l)
-    echo -e "  ${GREEN}+${NC} lib/ ($LIB_COUNT runtime libraries)"
+    echo -e "  ${GREEN}+${NC} lib/ ($LIB_COUNT runtime files)"
 else
     echo -e "  ${RED}MISSING${NC} lib/ — deploy will fail on board without runtime libraries"
 fi

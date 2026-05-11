@@ -1,5 +1,5 @@
 # Training data (~47 GB)
-train/data_128/
+train/data_*/
 train/ndjson/
 train/raw/
 
@@ -20,6 +20,7 @@ board_app/deploy/
 
 # Runtime libraries (large binaries, provided separately)
 board_app/lib/*.so
+board_app/lib/*.bin
 
 # Python
 __pycache__/
