@@ -160,12 +160,33 @@ for f in config.ini config.json labels.txt run.sh solidrun_logo.png; do
 done
 chmod +x "$DEPLOY_DIR/run.sh" 2>/dev/null || true
 
-# --- Copy runtime libraries ---
-if [ -d "$SCRIPT_DIR/lib" ]; then
+# --- Copy runtime libraries (auto-pull from Docker if missing) ---
+HOST_LIB_DIR="$SCRIPT_DIR/lib"
+if [ ! -d "$HOST_LIB_DIR" ] || [ -z "$(ls -A "$HOST_LIB_DIR"/*.so* 2>/dev/null)" ]; then
+    echo -e "  ${YELLOW}lib/ missing — auto-pulling from Docker container...${NC}"
+    CONTAINER="${CONTAINER:-drp-ai_tvm_v2n_container_$(whoami)}"
+    CONTAINER_LIB_DIR="/drp-ai_tvm/obj/build_runtime/v2h/lib"
+    docker start "$CONTAINER" >/dev/null 2>&1 || true
+    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
+        mkdir -p "$HOST_LIB_DIR"
+        if docker cp "${CONTAINER}:${CONTAINER_LIB_DIR}/." "$HOST_LIB_DIR/" 2>/dev/null; then
+            PULLED=$(ls -1 "$HOST_LIB_DIR"/*.so* 2>/dev/null | wc -l)
+            echo -e "  ${GREEN}+${NC} Pulled $PULLED runtime libs from $CONTAINER:$CONTAINER_LIB_DIR"
+        else
+            echo -e "  ${RED}FAIL${NC} docker cp from $CONTAINER:$CONTAINER_LIB_DIR failed"
+        fi
+    else
+        echo -e "  ${RED}FAIL${NC} Container $CONTAINER not found — start it or set CONTAINER=<name>"
+    fi
+fi
+
+if [ -d "$HOST_LIB_DIR" ] && [ -n "$(ls -A "$HOST_LIB_DIR"/*.so* 2>/dev/null)" ]; then
     mkdir -p "$DEPLOY_DIR/lib"
-    cp "$SCRIPT_DIR/lib"/*.so* "$DEPLOY_DIR/lib/" 2>/dev/null || true
+    cp "$HOST_LIB_DIR"/*.so* "$DEPLOY_DIR/lib/" 2>/dev/null || true
     LIB_COUNT=$(ls -1 "$DEPLOY_DIR/lib/" 2>/dev/null | wc -l)
     echo -e "  ${GREEN}+${NC} lib/ ($LIB_COUNT runtime libraries)"
+else
+    echo -e "  ${RED}MISSING${NC} lib/ — deploy will fail on board without runtime libraries"
 fi
 
 # --- Summary ---
