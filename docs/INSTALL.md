@@ -40,6 +40,15 @@ The Docker container bundles the entire Renesas toolchain:
 - **DRP-AI Translator i8 v1.11** — converts ONNX to INT8 DRP-AI format (with the Quantizer)
 - **DRP-AI TVM v2.7+ (MERA2)** — TVM-based compiler targeting the DRP-AI3 accelerator
 
+> **⚠️ SDK version note**: This guide was last verified against **RZ/V LP SDK 5.0.6** and **DRP-AI Translator v1.11**. Renesas periodically ships newer versions (5.0.11, 5.0.12, …). The commands in this guide use wildcards (`*.sh`, `/opt/rz-vlp/*/`) and auto-detection (`SDK_DIR=$(ls -d /opt/rz-vlp/*/ | head -1)`) so they work on any version — no manual substitution needed. The only place where the SDK version matters is when you run [board_app/compile_model.sh](../board_app/compile_model.sh) outside the standard build flow:
+>
+> ```bash
+> # On a fresh PC where the installed SDK isn't 5.0.6:
+> export SDK=/opt/rz-vlp/$(ls /opt/rz-vlp/ | head -1)
+> ```
+>
+> Or update the default on line 74 of `compile_model.sh` once.
+
 Once the Docker image is built, you reuse it for every project (Quick Draw, YOLO, etc.).
 
 ---
@@ -123,19 +132,28 @@ cd ~/renesas/tvm_work
 
 ### Extract the SDK installer from Package A
 
-The SDK installer is at `ai_sdk_setup/rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-5.0.6.sh` inside the ZIP. We extract just that file (using `-j` to flatten the directory structure):
+The SDK installer is at `ai_sdk_setup/rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-<VERSION>.sh` inside the ZIP. The `<VERSION>` part depends on which SDK Renesas is shipping at the time you download (e.g. `5.0.6`, `5.0.11`). The wildcard pattern below matches any version (using `-j` to flatten the directory structure):
 
 ```bash
 unzip -j ~/Downloads/RTK0EF0189F06000SJ.zip \
-    "ai_sdk_setup/rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-5.0.6.sh" \
+    "ai_sdk_setup/rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-*.sh" \
     -d ~/renesas/tvm_work/
+```
+
+After extraction, note which version you got — you'll need it later (Step 8 paths, `SDK=/opt/rz-vlp/<version>` in [board_app/compile_model.sh](../board_app/compile_model.sh)):
+
+```bash
+ls ~/renesas/tvm_work/rz-vlp-glibc-*-toolchain-*.sh
+# Example output: ...-toolchain-5.0.11.sh  →  your version is 5.0.11
 ```
 
 ### Extract the Translator installer from Package B
 
+The wildcard handles any Translator version (this guide was tested with `v1.11`):
+
 ```bash
 unzip -j ~/Downloads/r20ut5460ej0111-drp-ai-translator-i8.zip \
-    "DRP-AI_Translator_i8-v1.11-Linux-x86_64-Install" \
+    "DRP-AI_Translator_i8-*-Linux-x86_64-Install" \
     -d ~/renesas/tvm_work/
 ```
 
@@ -145,11 +163,11 @@ unzip -j ~/Downloads/r20ut5460ej0111-drp-ai-translator-i8.zip \
 ls -lh ~/renesas/tvm_work/
 ```
 
-Expected output:
+Expected output (versions in filenames will reflect what Renesas is currently shipping):
 
 ```
--rw-rw-r-- 1 user user 1.9G  ... rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-5.0.6.sh
--rwxrwxrwx 1 user user 243M  ... DRP-AI_Translator_i8-v1.11-Linux-x86_64-Install
+-rw-rw-r-- 1 user user 1.9G  ... rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-<SDK_VERSION>.sh
+-rwxrwxrwx 1 user user 243M  ... DRP-AI_Translator_i8-<TRANSLATOR_VERSION>-Linux-x86_64-Install
 ```
 
 If sizes are wrong, the extraction failed — re-download the ZIP and retry.
@@ -187,13 +205,13 @@ COPY ./*.sh /opt                                  # picks up the SDK installer
 COPY ./DRP-AI_Translator*-Linux*-x86_64-Install /opt    # picks up the Translator installer
 ```
 
-So both installers must be next to the `Dockerfile`. Move them in:
+So both installers must be next to the `Dockerfile`. Move them in (wildcard handles any SDK version):
 
 ```bash
-mv ~/renesas/tvm_work/rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-5.0.6.sh \
+mv ~/renesas/tvm_work/rz-vlp-glibc-*-toolchain-*.sh \
    ~/renesas/rzv_drp-ai_tvm/
 
-mv ~/renesas/tvm_work/DRP-AI_Translator_i8-v1.11-Linux-x86_64-Install \
+mv ~/renesas/tvm_work/DRP-AI_Translator_i8-*-Linux-x86_64-Install \
    ~/renesas/rzv_drp-ai_tvm/
 ```
 
@@ -203,12 +221,12 @@ Verify the staging:
 ls -lh ~/renesas/rzv_drp-ai_tvm/{Dockerfile,*.sh,DRP-AI_Translator*-Install}
 ```
 
-Expected:
+Expected (versions in filenames will reflect what Renesas is currently shipping):
 
 ```
 -rw-rw-r-- 1 user user 3.0K   Dockerfile
--rwxrwxrwx 1 user user 243M   DRP-AI_Translator_i8-v1.11-Linux-x86_64-Install
--rw-rw-r-- 1 user user 1.9G   rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-5.0.6.sh
+-rwxrwxrwx 1 user user 243M   DRP-AI_Translator_i8-<TRANSLATOR_VERSION>-Linux-x86_64-Install
+-rw-rw-r-- 1 user user 1.9G   rz-vlp-glibc-x86_64-core-image-weston-cortexa55-rzv2n-evk-toolchain-<SDK_VERSION>.sh
 ```
 
 ---
@@ -234,7 +252,7 @@ docker build \
 
 The build runs 50 steps, in order:
 1. **Steps 1–15**: Ubuntu 22.04 base + GCC 13, CMake 3.28.1, Python 3.10, LLVM 14, build tools
-2. **Steps 16–19**: COPY and run the SDK installer (auto-accepts EULA via `yes ""`) — installs to `/opt/rz-vlp/5.0.6/`
+2. **Steps 16–19**: COPY and run the SDK installer (auto-accepts EULA via `yes ""`) — installs to `/opt/rz-vlp/<SDK_VERSION>/`
 3. **Step 20**: Symlink `aarch64-poky-linux` → `cortexa55-poky-linux` sysroot
 4. **Steps 21–24**: COPY and run the Translator installer (auto-accepts via `yes`) — installs to `/opt/DRP-AI_Translator_i8/`
 5. **Steps 25–28**: Install Python deps (psutil, numpy 1.26.4, cython 3.0.11, decorator, attrs, TensorFlow 2.18.1, tflite, tqdm)
@@ -328,18 +346,22 @@ In a new shell or after the Python checks:
 # IMPORTANT: must unset LD_LIBRARY_PATH first, or the SDK script refuses to set up
 unset LD_LIBRARY_PATH
 
+# Auto-detect the installed SDK (works for any 5.0.x version)
+SDK_DIR=$(ls -d /opt/rz-vlp/*/ | head -1)
+echo "Found SDK at: $SDK_DIR"
+
 # Source the SDK environment (sets CC, CXX, sysroot, etc.)
-source /opt/rz-vlp/5.0.6/environment-setup-cortexa55-poky-linux
+source ${SDK_DIR}environment-setup-cortexa55-poky-linux
 
 # Verify
 aarch64-poky-linux-gcc --version
 # Expected: aarch64-poky-linux-gcc (GCC) 13.3.0
 
 echo $SDKTARGETSYSROOT
-# Expected: /opt/rz-vlp/5.0.6/sysroots/cortexa55-poky-linux
+# Expected: /opt/rz-vlp/<SDK_VERSION>/sysroots/cortexa55-poky-linux
 
 echo $OECORE_NATIVE_SYSROOT
-# Expected: /opt/rz-vlp/5.0.6/sysroots/x86_64-pokysdk-linux
+# Expected: /opt/rz-vlp/<SDK_VERSION>/sysroots/x86_64-pokysdk-linux
 ```
 
 > **Important — Two-mode environment**: Sourcing the SDK environment overrides Python paths and breaks `import tvm`. So:
@@ -447,15 +469,18 @@ PRODUCT=V2N
 The compile script also expects:
 
 ```bash
-SDK=/opt/rz-vlp/5.0.6/                                    # NOT /sysroots — script appends it
+SDK=/opt/rz-vlp/<SDK_VERSION>/                            # NOT /sysroots — script appends it
 TRANSLATOR=/opt/DRP-AI_Translator_i8/translator/          # trailing slash required
 ```
+
+To discover `<SDK_VERSION>` inside the container: `ls /opt/rz-vlp/`
 
 ### Inside Docker — C++ cross-compilation (SDK sourced)
 
 ```bash
 unset LD_LIBRARY_PATH                                     # MUST do this first
-source /opt/rz-vlp/5.0.6/environment-setup-cortexa55-poky-linux
+SDK_DIR=$(ls -d /opt/rz-vlp/*/ | head -1)                 # auto-detect any 5.0.x version
+source ${SDK_DIR}environment-setup-cortexa55-poky-linux
 # Sets: CC, CXX, SDKTARGETSYSROOT, OECORE_NATIVE_SYSROOT, CFLAGS, LDFLAGS, etc.
 
 export TVM_ROOT=/drp-ai_tvm
@@ -480,7 +505,7 @@ What's inside the Docker image:
 
 ```
 /opt/
-├── rz-vlp/5.0.6/                                  RZ/V LP SDK (cross-compiler)
+├── rz-vlp/<SDK_VERSION>/                          RZ/V LP SDK (cross-compiler)
 │   ├── sysroots/
 │   │   ├── cortexa55-poky-linux/                  ARM64 sysroot (headers + libs)
 │   │   └── x86_64-pokysdk-linux/                  Host tools

@@ -11,7 +11,7 @@ This guide is verified by re-running the entire pipeline from scratch. Every mea
 ```
 ┌────────────────────────────────────────────────────┐
 │ Step 1: Set up Python environment                  │
-│ Step 2: Download + render dataset (data_128/)      │  ~30-45 min, ~50 GB
+│ Step 2: Download + render dataset (data_128/)      │  ~30-45 min, ~48 GB
 │ Step 3: Run training (train.py)                    │  ~6 hours on RTX 5060 Ti
 │ Step 4: Verify outputs (best_model.pt, qd_model.onnx)
 │ Step 5: Generate calibration images                 │  ~1 min

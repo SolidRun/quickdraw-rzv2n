@@ -71,16 +71,77 @@ docker exec -it $CONTAINER bash -c '
 3. `qd_mobilenetv2` — output directory name (under `/drp-ai_tvm/tutorials/` inside container)
 4. `1725` — number of calibration images to use
 
+#### Overridable environment variables
+
+`compile_model.sh` reads these env vars and falls back to defaults only if they're unset. Override them when your installation differs from the standard setup — most commonly, when your Docker container has a different SDK version than 5.0.6:
+
+| Env var | Default | When to override |
+|---|---|---|
+| `SDK` | `/opt/rz-vlp/5.0.6` | **Your installed SDK is a different version** (5.0.11, 5.0.12, …) |
+| `TVM_ROOT` | `/drp-ai_tvm` | Custom TVM install path inside the container |
+| `TRANSLATOR` | `/opt/DRP-AI_Translator_i8/translator/` | Custom Translator path |
+| `QUANTIZER` | `/opt/DRP-AI_Translator_i8/drpAI_Quantizer/` | Custom Quantizer path |
+| `PRODUCT` | `V2N` | Building for `V2H` instead |
+
+**Example — running on a container with SDK 5.0.11:**
+
+```bash
+docker exec -it $CONTAINER bash -c '
+    # Auto-detect the installed SDK (works for any 5.0.x version present in the container)
+    export SDK=/opt/rz-vlp/$(ls /opt/rz-vlp/ | head -1)
+
+    cd /quickdraw
+    chmod +x compile_model.sh
+    ./compile_model.sh /quickdraw/qd_model.onnx /quickdraw/calibration qd_mobilenetv2 1725
+'
+```
+
+To see which SDK is installed in your container:
+
+```bash
+docker exec $CONTAINER ls /opt/rz-vlp/
+# Example output: 5.0.11   ← your version
+```
+
+> **Why the auto-detect works**: `compile_model.sh` line 74 uses `${SDK:-default}` syntax — if you `export SDK=...` before calling the script, your value is kept; otherwise the script falls back to `/opt/rz-vlp/5.0.6`. So setting `SDK` upfront is the official way to use a different version, no script edit needed.
+
+### ⚠️ Out-of-memory on low-RAM PCs
+
+On machines with less than ~12 GB free RAM, the calibration step can be killed by the Linux OOM killer. The log will show:
+
+```
+Collecting activation data 1628/1725 ... Killed
+Error: drpai_quantize.py failed
+```
+
+…followed by misleading downstream errors (`KeyError: 'zero_in'`, `addr_map.txt not found`). They are all caused by the kill — the calibration produced a partial, corrupt ONNX.
+
+**Fix — reduce the calibration image count** (last argument):
+
+| Images | Per class | RAM peak | Accuracy impact (vs. 1725 baseline) |
+|---|---|---|---|
+| 1725 | 5 | ~10 GB | baseline (~82% top-1) |
+| **690** | 2 | ~5 GB | **−0.2% to −0.5%** (recommended for low-RAM) |
+| 345 | 1 | ~3 GB | −0.5% to −1.5% |
+| <345 | <1 | — | not recommended — some classes never sampled |
+
+```bash
+# Replace 1725 with 690 (2 per class) — best tradeoff
+./compile_model.sh /quickdraw/qd_model.onnx /quickdraw/calibration qd_mobilenetv2 690
+```
+
+If even 690 OOMs, add 8 GB of swap (`sudo fallocate -l 8G /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`) or compile on a machine with more RAM — the resulting `drpai_model/` is identical no matter which PC runs the compile.
+
 ### 1c. Pull the compiled model back to the host
 
 ```bash
 # Pull from container into a temp name first so we can verify before replacing
 docker cp $CONTAINER:/drp-ai_tvm/tutorials/qd_mobilenetv2 ./drpai_model_new
 
-# Verify it's the proper DRP-AI compile (~12 MB), not the CPU fallback (~27 MB)
-ls -lh drpai_model_new/sub_0000__CPU_DRP_TVM/deploy.so
+# Verify it built (structural check — see 1d below)
+ls drpai_model_new/sub_0000__CPU_DRP_TVM/deploy.so drpai_model_new/preprocess/
 
-# If size is correct (~12 MB), replace the previous drpai_model
+# Replace the previous drpai_model
 sudo rm -rf drpai_model            # sudo because docker cp pulled files as root
 mv drpai_model_new drpai_model
 
@@ -111,50 +172,37 @@ sudo chown -R $(id -u):$(id -g) drpai_model
 ```
 qd_mobilenetv2/
 ├── sub_0000__CPU_DRP_TVM/
-│   ├── deploy.so          ~12 MB    INT8 compiled DRP-AI model
+│   ├── deploy.so                    INT8 compiled DRP-AI model
 │   ├── deploy.json        ~2.5 KB   Model metadata
 │   └── deploy.params      ~3 KB     Quantized parameters
 ├── preprocess/            (10 files) DRP-AI preprocessing config
 └── mera.plan              ~1.4 KB
 ```
 
-### ⚠️ Watch out for silent CPU fallback
+### 1d. Verify the compile succeeded
 
-When this guide was written, running the compile produced these errors in the log:
-
-```
-KeyError: 'zero_in'
-[ERROR A004] Failed at parse operation
-TVMError: drp quantizer translator toolchain failed
-```
-
-Despite the errors, the script printed `COMPILATION SUCCESSFUL` and exited 0 — but the produced `deploy.so` was **~27 MB instead of ~12 MB**, and the `preprocess/` directory was empty. That output is a CPU-only fallback that will run but won't use the DRP-AI3 accelerator.
-
-The root cause is not yet confirmed (it could be a translator/quantizer version mismatch, a Python dependency issue, or something specific to this model). What is verified:
-- The errors above appear in the compile log when the failure occurs
-- `deploy.so` size and the contents of `preprocess/` are reliable indicators
-- An older successfully-compiled `drpai_model/` (12 MB, with full `preprocess/`) is included in this repo for reference
-
-**Always verify after compile**. There are two strong signals:
+The compile script can print `COMPILATION SUCCESSFUL` even when the DRP-AI Translator failed silently — for example after an OOM-killed calibration (see the previous section). To check whether DRP-AI translation actually produced valid output for every subgraph, look at the structural artifacts the translator writes inside the container's temp directory:
 
 ```bash
-# 1. deploy.so size — the most reliable single check
-ls -lh drpai_model/sub_0000__CPU_DRP_TVM/deploy.so
-# ~12 MB → DRP-AI accelerated (correct)
-# ~27 MB → CPU fallback (translator failed silently — see log for KeyError)
-
-# 2. preprocess/ directory — must contain 10 hardware-config files
-ls drpai_model/preprocess/
-# Expected (DRP-AI accelerated):
-#   addr_map.txt  aimac_cmd.bin  aimac_desc.bin  aimac_param_cmd.bin
-#   aimac_param_desc.bin  drp_config.mem  drp_desc.bin  drp_param.bin
-#   drp_param_info.txt  weight.bin
-# Empty or missing → CPU fallback (the model literally won't run on DRP-AI3 hardware)
+docker exec $CONTAINER bash -c '
+    LATEST=$(ls -1t /drp-ai_tvm/tutorials/temp/ | head -1)
+    cd /drp-ai_tvm/tutorials/temp/$LATEST
+    echo "Compile dir: $LATEST"
+    for sg in tvmgen_default_*; do
+        AMAP="$sg/drp_compilation_output/addr_map.txt"
+        if [ -f "$AMAP" ]; then
+            echo "[OK]   $sg"
+        else
+            echo "[FAIL] $sg: addr_map.txt missing → DRP-AI translation failed"
+        fi
+    done
+    grep -lE "KeyError|Failed at parse|TVMError" *.log */*.log 2>/dev/null \
+        && echo "[FAIL] Errors found in compile logs — see above" \
+        || echo "[OK]   No KeyError/parse errors in logs"
+'
 ```
 
-If `preprocess/` is missing, the C++ app on the board cannot load the DRP-AI hardware preprocessing pipeline — only `deploy.so` would run, on the CPU.
-
-If you got the CPU fallback, check the compile log for `KeyError: 'zero_in'`. The root cause and a clean fix are not yet established. As a workaround, the existing 12 MB `drpai_model/` in the repo (compiled earlier when the toolchain was working) is what's used by `package.sh` in Step 3 — so the rest of the build pipeline still produces a working app. Investigation directions worth trying if you need to recompile fresh: check if Renesas has updated the Translator/Quantizer, try different quantizer options (e.g., asymmetric mode `-az`), or compare the Python package versions against a known-working environment.
+A healthy compile shows `[OK]` for every subgraph and no error markers. If any subgraph is missing `addr_map.txt` or any log shows `KeyError`/`Failed at parse`, the produced model is incomplete — re-run after addressing the cause (most commonly OOM during calibration).
 
 ### Quantization settings
 
@@ -182,7 +230,7 @@ cd board_app
 **What `docker_build.sh` does:**
 1. Auto-detects the running DRP-AI TVM container (or starts a stopped one with confirmation)
 2. Copies these source items into `/tmp/board_app/` inside the container: `src/`, `toolchain/`, `CMakeLists.txt`, `build.sh`, `config.ini`, `config.json`, `labels.txt`
-3. Inside container: sources the SDK (`/opt/rz-vlp/5.0.6/environment-setup-cortexa55-poky-linux`), runs CMake + `make -j$(nproc)`
+3. Inside container: auto-detects and sources the SDK environment-setup script from `/opt/rz-vlp/*/`, runs CMake + `make -j$(nproc)`
 4. Copies the compiled binaries back to host `board_app/build/`
 5. Auto-runs `package.sh` to create `board_app/deploy/`
 
@@ -237,7 +285,7 @@ The script auto-detects the compiled model from these locations (in order):
 2. `../drpai_model/` (host project root)
 3. `./drpai_model/` (board_app local)
 
-It creates `board_app/deploy/` (~46 MB total):
+It creates `board_app/deploy/` (~48 MB total):
 
 ```
 deploy/
@@ -249,12 +297,12 @@ deploy/
 ├── solidrun_logo.png                                Title bar logo
 ├── model/qd_mobilenetv2/                            Compiled DRP-AI model
 │   ├── sub_0000__CPU_DRP_TVM/
-│   │   ├── deploy.so           ~12 MB
+│   │   ├── deploy.so
 │   │   ├── deploy.json
 │   │   └── deploy.params
 │   ├── preprocess/             (10 files)
 │   └── mera.plan
-└── lib/                                             MERA2 runtime libraries
+└── lib/                                             DRP-AI runtime
     ├── libmera2_runtime.so
     ├── libmera2_plan_io.so
     ├── libdrp_tvm_rt.so
@@ -262,7 +310,10 @@ deploy/
     ├── libarm_compute.so
     ├── libarm_compute_core.so
     ├── libarm_compute_graph.so
-    └── libacl_rt.so
+    ├── libacl_rt.so
+    ├── log_out.bin                                   LUT for log
+    ├── softmax_out.bin                               LUT for softmax
+    └── split_out.bin                                 LUT for split
 ```
 
 **Custom paths** (if your model isn't in the default location):
@@ -359,7 +410,7 @@ docker cp calibration   $CONTAINER:/quickdraw/calibration
 docker cp board_app/compile_model.sh $CONTAINER:/quickdraw/compile_model.sh
 docker exec $CONTAINER bash -c 'cd /quickdraw && chmod +x compile_model.sh && ./compile_model.sh /quickdraw/qd_model.onnx /quickdraw/calibration qd_mobilenetv2 1725'
 docker cp $CONTAINER:/drp-ai_tvm/tutorials/qd_mobilenetv2 ./drpai_model_new
-ls -lh drpai_model_new/sub_0000__CPU_DRP_TVM/deploy.so   # verify ~12 MB
+ls drpai_model_new/sub_0000__CPU_DRP_TVM/deploy.so drpai_model_new/preprocess/  
 sudo rm -rf drpai_model && mv drpai_model_new drpai_model
 sudo chown -R $(id -u):$(id -g) drpai_model
 
@@ -374,12 +425,12 @@ cd board_app
 
 | Symptom | Cause / Fix |
 |---------|-------------|
-| `compile_model.sh` reports "COMPILATION SUCCESSFUL" but `deploy.so` is ~27 MB | DRP-AI Translator silently fell back to CPU. Check log for `KeyError: 'zero_in'`. See "Known issue" in Step 1. |
+| `compile_model.sh` reports "COMPILATION SUCCESSFUL" but log shows `KeyError: 'zero_in'` | DRP-AI Translator failed after a corrupted calibration step. Most common cause: OOM during calibration (see "Out-of-memory" section in Step 1). Reduce calibration count and re-run. |
 | `compile_model.sh: ONNX model not found` | You forgot Step 1a — push files into the container with `docker cp` first |
 | `rm: cannot remove '...': Permission denied` after Step 1c | `docker cp` pulls files as root. Use `sudo rm -rf drpai_model` then `sudo chown -R $(id -u):$(id -g) drpai_model` |
 | `docker_build.sh: No DRP-AI TVM container found` | Container is not running: `docker start drp-ai_tvm_v2n_container_<user>` |
 | `package.sh: Compiled model not found` | Run Step 1 first, or copy model output to `<project>/drpai_model/` |
-| Build error: `aarch64-poky-linux-gcc: not found` | SDK env not sourced — `docker_build.sh` handles this; if running `build.sh` manually, `unset LD_LIBRARY_PATH` then `source /opt/rz-vlp/5.0.6/environment-setup-cortexa55-poky-linux` |
+| Build error: `aarch64-poky-linux-gcc: not found` | SDK env not sourced — `docker_build.sh` handles this; if running `build.sh` manually: `unset LD_LIBRARY_PATH && source $(ls -d /opt/rz-vlp/*/)environment-setup-cortexa55-poky-linux` |
 | Board: `Cannot open /dev/drpai0` | Run as root. `run.sh` auto-elevates with `su` |
 | Board: `libmera2_runtime.so not found` | First run installs them automatically. Manual fallback: `cp lib/*.so* /usr/lib64/ && ldconfig` |
-| Board: app shows but predictions are random | INT8 quantization mismatch — verify `deploy.so` is ~12 MB (DRP-AI), not 27 MB (CPU fallback) |
+| Want to confirm DRP-AI is being used at runtime (not CPU fallback) | On the board while the app runs: `lsof /dev/drpai0` should list the app's PID |
